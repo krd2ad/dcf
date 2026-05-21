@@ -190,6 +190,12 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: 'Unexpected response from AI' })
     }
 
+    const INPUT_COST_PER_TOKEN = 3.00 / 1_000_000   // claude-sonnet-4-6
+    const OUTPUT_COST_PER_TOKEN = 15.00 / 1_000_000
+    const inputTokens = response.usage.input_tokens
+    const outputTokens = response.usage.output_tokens
+    const costUsd = inputTokens * INPUT_COST_PER_TOKEN + outputTokens * OUTPUT_COST_PER_TOKEN
+
     const cleaned = textBlock.text
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```\s*$/, '')
@@ -248,6 +254,8 @@ export default async function handler(req: any, res: any) {
         // Non-fatal — return whatever Claude + pre-fetch provided
       }
     }
+
+    parsed._meta = { costUsd, inputTokens, outputTokens, model: 'claude-sonnet-4-6' }
 
     return res.status(200).json(parsed)
   } catch (error) {

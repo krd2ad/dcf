@@ -644,6 +644,19 @@
     .disclaimer-bar strong {
       color: var(--danger);
     }
+    .cost-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding: 0 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text3);
+    }
+    .cost-sep { opacity: 0.4; }
+    .cost-model { color: var(--text3); letter-spacing: 0.05em; }
+    .cost-value { color: var(--accent); }
 
     /* ── RESPONSIVE ─────────────────────────────────────── */
     @media (max-width: 600px) {
@@ -1223,6 +1236,13 @@
       <div class="disclaimer-bar">
         <strong>Not financial advice.</strong> This analysis is AI-generated and provided for educational and informational purposes only. It does not constitute a buy, sell, or hold recommendation for any security. All figures are estimates based on publicly available information and modeled assumptions — they may be incomplete, inaccurate, or outdated. Do not make investment decisions based on this output alone. Consult a licensed financial professional before making any investment decisions.
       </div>
+      ${d._meta ? `<div class="cost-bar">
+        <span class="cost-model">${d._meta.model}</span>
+        <span class="cost-sep">·</span>
+        <span>${d._meta.inputTokens.toLocaleString()} in / ${d._meta.outputTokens.toLocaleString()} out</span>
+        <span class="cost-sep">·</span>
+        <span class="cost-value">$${d._meta.costUsd.toFixed(4)}</span>
+      </div>` : ''}
     `;
 
     // ── BUILD CHART ──
