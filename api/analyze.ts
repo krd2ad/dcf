@@ -149,6 +149,34 @@ export default async function handler(req: any, res: any) {
 
     const parsed = JSON.parse(cleaned)
 
+    // Override current_price with live data from Alpaca for public companies
+    if (parsed.is_public && parsed.ticker && process.env.ALPACA_API_KEY && process.env.ALPACA_SECRET_KEY) {
+      try {
+        const alpacaRes = await fetch(
+          `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(parsed.ticker)}/trades/latest`,
+          {
+            headers: {
+              'APCA-API-KEY-ID': process.env.ALPACA_API_KEY,
+              'APCA-API-SECRET-KEY': process.env.ALPACA_SECRET_KEY,
+            },
+          },
+        )
+        if (alpacaRes.ok) {
+          const alpacaData = await alpacaRes.json()
+          const livePrice = alpacaData?.trade?.p
+          if (typeof livePrice === 'number' && livePrice > 0) {
+            parsed.current_price = livePrice
+            if (typeof parsed.intrinsic_value_per_share === 'number') {
+              parsed.upside_downside_pct =
+                ((parsed.intrinsic_value_per_share - livePrice) / livePrice) * 100
+            }
+          }
+        }
+      } catch {
+        // Non-fatal: fall back to model-provided price
+      }
+    }
+
     return res.status(200).json(parsed)
   } catch (error) {
     console.error(error)
