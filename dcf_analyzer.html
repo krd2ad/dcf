@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DCF Intrinsic Value Analyzer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e17;
+      --surface: #111827;
+      --surface2: #1a2235;
+      --border: rgba(255,255,255,0.08);
+      --border2: rgba(255,255,255,0.14);
+      --accent: #00d4aa;
+      --accent2: #0099ff;
+      --text: #e8edf5;
+      --text2: #8a9ab5;
+      --text3: #4a5568;
+      --danger: #ff4f64;
+      --warn: #f59e0b;
+      --green: #10b981;
+      --mono: 'IBM Plex Mono', monospace;
+      --sans: 'IBM Plex Sans', sans-serif;
+    }
+
+    html, body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+    }
+
+    /* ── HEADER ─────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 40px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .header-left {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+    }
+    .logo-mark {
+      font-family: var(--mono);
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+      line-height: 1;
+    }
+    .header-title {
+      font-family: var(--sans);
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text2);
+      letter-spacing: 0.01em;
+    }
+    .nfa-pill {
+      font-family: var(--mono);
+      font-size: 9px;
+      font-variant: small-caps;
+      letter-spacing: 0.14em;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+      border-radius: 4px;
+      padding: 4px 10px;
+      opacity: 0.8;
+    }
+
+    /* ── MAIN ───────────────────────────────────────────── */
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* ── SEARCH SECTION ─────────────────────────────────── */
+    .search-section { margin-bottom: 12px; }
+    .search-row {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .search-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .search-input::placeholder { color: var(--text3); }
+    .search-input:focus { border-color: var(--accent); }
+    .run-btn {
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 8px;
+      padding: 14px 24px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .run-btn:hover { background: #00bfa0; }
+    .run-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── TOGGLE ─────────────────────────────────────────── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin: 14px 0 12px;
+    }
+    .toggle-label {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text3);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .toggle-group {
+      display: flex;
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .tog {
+      background: transparent;
+      border: none;
+      color: var(--text2);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      padding: 6px 16px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      border-right: 1px solid var(--border2);
+    }
+    .tog:last-child { border-right: none; }
+    .tog.active {
+      background: rgba(0,212,170,0.12);
+      color: var(--accent);
+    }
+
+    /* ── EXAMPLE CHIPS ──────────────────────────────────── */
+    .chips-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .chip-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text3);
+      letter-spacing: 0.08em;
+      display: flex;
+      align-items: center;
+    }
+    .chip {
+      background: transparent;
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text2);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* ── LOADING PANEL ──────────────────────────────────── */
+    .loading-panel {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-top: 24px;
+    }
+    .loading-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      color: var(--text3);
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .loading-steps { list-style: none; }
+    .loading-step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .loading-step:last-child { border-bottom: none; }
+    .step-icon {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text3);
+    }
+    .step-dot.active {
+      background: var(--accent);
+      animation: pulse 1.2s ease-in-out infinite;
+    }
+    .step-check {
+      font-size: 13px;
+      color: var(--text3);
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+    .step-text {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text3);
+      transition: color 0.3s;
+    }
+    .step-text.active { color: var(--accent); }
+    .step-text.done { color: var(--text3); }
+
+    /* ── ERROR PANEL ────────────────────────────────────── */
+    .error-panel {
+      display: none;
+      margin-top: 24px;
+    }
+    .error-card {
+      background: rgba(255,79,100,0.04);
+      border: 1px solid rgba(255,79,100,0.25);
+      border-radius: 10px;
+      padding: 20px 24px;
+    }
+    .error-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.15em;
+      color: var(--danger);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .error-msg {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text2);
+    }
+
+    /* ── RESULTS PANEL ──────────────────────────────────── */
+    .results-panel { margin-top: 28px; }
+
+    /* ── COMPANY HEADER ─────────────────────────────────── */
+    .company-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 12px;
+      padding: 24px 28px;
+      margin-bottom: 20px;
+      gap: 20px;
+    }
+    .co-left {}
+    .co-name {
+      font-family: var(--sans);
+      font-size: 26px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 10px;
+      line-height: 1.15;
+    }
+    .co-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+    .meta-pill {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      border-radius: 4px;
+      padding: 3px 9px;
+      border: 1px solid var(--border2);
+      color: var(--text2);
+    }
+    .meta-pill.ticker { color: var(--accent); border-color: rgba(0,212,170,0.3); background: rgba(0,212,170,0.06); }
+    .meta-pill.public { color: var(--accent); border-color: rgba(0,212,170,0.3); }
+    .meta-pill.private { color: var(--warn); border-color: rgba(245,158,11,0.35); }
+    .meta-pill.dq-high { color: var(--green); border-color: rgba(16,185,129,0.3); }
+    .meta-pill.dq-med { color: var(--warn); border-color: rgba(245,158,11,0.3); }
+    .meta-pill.dq-low { color: var(--danger); border-color: rgba(255,79,100,0.3); }
+    .co-right { text-align: right; flex-shrink: 0; }
+    .iv-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      color: var(--text3);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .iv-value {
+      font-family: var(--mono);
+      font-size: 32px;
+      font-weight: 600;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .iv-upside {
+      font-family: var(--mono);
+      font-size: 13px;
+      margin-top: 6px;
+    }
+    .iv-upside.up { color: var(--green); }
+    .iv-upside.dn { color: var(--danger); }
+    .iv-mktprice {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 3px;
+    }
+
+    /* ── STEP CARDS ─────────────────────────────────────── */
+    .step-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    .step-header:hover { background: var(--surface2); }
+    .step-header-left {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .step-num {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent2);
+      letter-spacing: 0.06em;
+    }
+    .step-title {
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text);
+      letter-spacing: 0.04em;
+    }
+    .step-chevron {
+      font-size: 12px;
+      color: var(--text3);
+      transition: transform 0.2s;
+    }
+    .step-chevron.open { transform: rotate(180deg); }
+    .step-body {
+      padding: 20px 24px;
+    }
+    .step-prose {
+      font-family: var(--sans);
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.7;
+      margin-bottom: 18px;
+    }
+
+    /* ── FORMULA BLOCK ──────────────────────────────────── */
+    .formula-block {
+      background: rgba(0,153,255,0.05);
+      border: 1px solid rgba(0,153,255,0.2);
+      border-left: 3px solid var(--accent2);
+      border-radius: 0 6px 6px 0;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+    }
+    .formula-label {
+      font-size: 9px;
+      font-family: var(--mono);
+      letter-spacing: 0.15em;
+      color: var(--accent2);
+      display: block;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+    }
+    .formula-text {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--text);
+      font-weight: 500;
+      line-height: 1.7;
+    }
+    .formula-vars {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text3);
+      margin-top: 6px;
+      line-height: 1.6;
+    }
+
+    /* ── DATA TABLES ────────────────────────────────────── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 18px;
+    }
+    .data-table th {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text3);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border2);
+      text-align: left;
+      font-weight: 400;
+    }
+    .data-table th.num { text-align: right; }
+    .data-table td {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text2);
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table td.num {
+      text-align: right;
+      color: var(--accent);
+    }
+    .data-table td.num.key {
+      color: var(--accent2);
+      font-weight: 500;
+    }
+    .data-table td.inferred { color: var(--warn); }
+    .data-table td.note {
+      font-size: 10px;
+      color: var(--text3);
+    }
+    .data-table tr.key-row td {
+      color: var(--accent2);
+      font-weight: 500;
+    }
+
+    /* ── SOURCE NOTE / WARNING BANNER ───────────────────── */
+    .source-note {
+      background: rgba(245,158,11,0.05);
+      border: 1px solid rgba(245,158,11,0.15);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text3);
+      margin-bottom: 16px;
+      line-height: 1.6;
+    }
+    .source-note span { color: var(--warn); }
+
+    /* ── TV FLAG ─────────────────────────────────────────── */
+    .tv-flag {
+      font-family: var(--mono);
+      font-size: 11px;
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-top: 12px;
+    }
+    .tv-flag.warn {
+      background: rgba(245,158,11,0.07);
+      border: 1px solid rgba(245,158,11,0.2);
+      color: var(--warn);
+    }
+
+    /* ── CHART WRAPPER ──────────────────────────────────── */
+    .chart-wrapper {
+      position: relative;
+      width: 100%;
+      height: 200px;
+      margin-top: 8px;
+    }
+    .chart-legend {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 10px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text3);
+    }
+    .legend-swatch {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+    }
+
+    /* ── SENSITIVITY GRID ───────────────────────────────── */
+    .sens-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .sens-card {
+      background: var(--surface2);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .sens-label {
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .sens-label.bull { color: var(--green); }
+    .sens-label.base { color: var(--accent); }
+    .sens-label.bear { color: var(--danger); }
+    .sens-value {
+      font-family: var(--mono);
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .sens-value.bull { color: var(--green); }
+    .sens-value.base { color: var(--accent); }
+    .sens-value.bear { color: var(--danger); }
+    .sens-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--text3);
+    }
+
+    /* ── FLAGGED ASSUMPTIONS ────────────────────────────── */
+    .flagged-section {
+      margin-top: 16px;
+    }
+    .flagged-title {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      color: var(--text3);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .flagged-item {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--warn);
+      padding: 4px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .flagged-item:last-child { border-bottom: none; }
+
+    /* ── RISKS LIST ─────────────────────────────────────── */
+    .risks-list {
+      list-style: none;
+      margin-bottom: 16px;
+    }
+    .risks-list li {
+      font-family: var(--sans);
+      font-size: 13px;
+      color: var(--text2);
+      padding: 7px 0 7px 18px;
+      position: relative;
+      border-bottom: 1px solid var(--border);
+      line-height: 1.6;
+    }
+    .risks-list li:last-child { border-bottom: none; }
+    .risks-list li::before {
+      content: '●';
+      color: var(--warn);
+      font-size: 8px;
+      position: absolute;
+      left: 2px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .analyst-note {
+      font-family: var(--sans);
+      font-size: 13px;
+      color: var(--text2);
+      line-height: 1.8;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    /* ── DISCLAIMER BAR ─────────────────────────────────── */
+    .disclaimer-bar {
+      background: rgba(255,79,100,0.04);
+      border: 1px solid rgba(255,79,100,0.15);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-top: 24px;
+      font-family: var(--sans);
+      font-size: 12px;
+      color: var(--text3);
+      line-height: 1.7;
+    }
+    .disclaimer-bar strong {
+      color: var(--danger);
+    }
+
+    /* ── RESPONSIVE ─────────────────────────────────────── */
+    @media (max-width: 600px) {
+      header { padding: 16px; }
+      main { padding: 24px 16px 60px; }
+      .company-header { flex-direction: column; }
+      .co-right { text-align: left; }
+      .iv-value { font-size: 26px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <span class="logo-mark">DCF</span>
+    <span class="header-title">Intrinsic Value Analyzer</span>
+  </div>
+  <span class="nfa-pill">NOT FINANCIAL ADVICE</span>
+</header>
+
+<main>
+  <div class="search-section">
+    <div class="search-row">
+      <input
+        id="companyInput"
+        class="search-input"
+        type="text"
+        placeholder="Company name or ticker — e.g. AAPL, Stripe"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <button class="run-btn" id="runBtn" onclick="runAnalysis()">RUN ANALYSIS</button>
+    </div>
+
+    <div class="toggle-row">
+      <span class="toggle-label">Projection Horizon</span>
+      <div class="toggle-group">
+        <button class="tog active" data-years="5" onclick="setYears(5)">5 YR</button>
+        <button class="tog" data-years="10" onclick="setYears(10)">10 YR</button>
+      </div>
+    </div>
+
+    <div class="chips-row">
+      <span class="chip-label">EXAMPLES&nbsp;·</span>
+      <button class="chip" onclick="setExample('AAPL')">AAPL</button>
+      <button class="chip" onclick="setExample('MSFT')">MSFT</button>
+      <button class="chip" onclick="setExample('NVDA')">NVDA</button>
+      <button class="chip" onclick="setExample('Stripe')">Stripe</button>
+      <button class="chip" onclick="setExample('SpaceX')">SpaceX</button>
+    </div>
+  </div>
+
+  <!-- Loading Panel -->
+  <div class="loading-panel" id="loadingPanel">
+    <div class="loading-title">Analyzing — please wait</div>
+    <ul class="loading-steps" id="loadingSteps">
+      <li class="loading-step" id="ls0">
+        <div class="step-icon"><div class="step-dot"></div></div>
+        <span class="step-text">Identifying company &amp; data availability...</span>
+      </li>
+      <li class="loading-step" id="ls1">
+        <div class="step-icon"><div class="step-dot"></div></div>
+        <span class="step-text">Gathering financials &amp; consensus estimates...</span>
+      </li>
+      <li class="loading-step" id="ls2">
+        <div class="step-icon"><div class="step-dot"></div></div>
+        <span class="step-text">Estimating discount rate (WACC)...</span>
+      </li>
+      <li class="loading-step" id="ls3">
+        <div class="step-icon"><div class="step-dot"></div></div>
+        <span class="step-text">Projecting free cash flows...</span>
+      </li>
+      <li class="loading-step" id="ls4">
+        <div class="step-icon"><div class="step-dot"></div></div>
+        <span class="step-text">Computing terminal value &amp; intrinsic value...</span>
+      </li>
+      <li class="loading-step" id="ls5">
+        <div class="step-icon"><div class="step-dot"></div></div>
+        <span class="step-text">Running sensitivity analysis...</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Error Panel -->
+  <div class="error-panel" id="errorPanel">
+    <div class="error-card">
+      <div class="error-label">Error</div>
+      <div class="error-msg" id="errorMsg">An error occurred.</div>
+    </div>
+  </div>
+
+  <!-- Results Panel -->
+  <div class="results-panel" id="resultsPanel"></div>
+</main>
+
+<script>
+  // ── API CONFIG ────────────────────────────────────────────
+  const API_ENDPOINT = 'https://dcf-eight.vercel.app/api/analyze';
+
+  // ── STATE ─────────────────────────────────────────────────
+  let projectionYears = 5;
+  let activeChart = null;
+  let loadingInterval = null;
+  let loadingStep = 0;
+  let apiDone = false;
+
+  // ── DOM REFS ──────────────────────────────────────────────
+  const companyInput = document.getElementById('companyInput');
+  const runBtn = document.getElementById('runBtn');
+  const loadingPanel = document.getElementById('loadingPanel');
+  const errorPanel = document.getElementById('errorPanel');
+  const errorMsg = document.getElementById('errorMsg');
+  const resultsPanel = document.getElementById('resultsPanel');
+
+  // ── HELPERS ───────────────────────────────────────────────
+  function setYears(n) {
+    projectionYears = n;
+    document.querySelectorAll('.tog').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.years) === n);
+    });
+  }
+
+  function setExample(name) {
+    companyInput.value = name;
+    companyInput.focus();
+  }
+
+  function fmt$(n, dec = 2) {
+    if (n == null || isNaN(n)) return '—';
+    return '$' + Math.abs(n).toFixed(dec) + 'B';
+  }
+
+  function fmtPct(n, dec = 1) {
+    if (n == null || isNaN(n)) return '—';
+    return n.toFixed(dec) + '%';
+  }
+
+  function fmtNum(n, dec = 2) {
+    if (n == null || isNaN(n)) return '—';
+    return n.toFixed(dec);
+  }
+
+  function fmtShare(n) {
+    if (n == null || isNaN(n)) return '—';
+    return '$' + n.toFixed(2);
+  }
+
+  function showError(msg) {
+    errorPanel.style.display = 'block';
+    errorMsg.textContent = msg;
+    loadingPanel.style.display = 'none';
+    runBtn.disabled = false;
+    clearLoadingInterval();
+  }
+
+  function clearLoadingInterval() {
+    if (loadingInterval) {
+      clearInterval(loadingInterval);
+      loadingInterval = null;
+    }
+  }
+
+  // ── LOADING ANIMATION ─────────────────────────────────────
+  function startLoading() {
+    loadingStep = 0;
+    apiDone = false;
+    loadingPanel.style.display = 'block';
+
+    // Reset all steps
+    for (let i = 0; i < 6; i++) {
+      const li = document.getElementById('ls' + i);
+      const dot = li.querySelector('.step-dot');
+      const txt = li.querySelector('.step-text');
+      dot.className = 'step-dot';
+      txt.className = 'step-text';
+      li.querySelector('.step-icon').innerHTML = '<div class="step-dot"></div>';
+    }
+
+    setActiveStep(0);
+
+    loadingInterval = setInterval(() => {
+      if (apiDone) {
+        // Lock to step 5
+        setDoneStep(loadingStep);
+        setActiveStep(5);
+        clearLoadingInterval();
+        return;
+      }
+      if (loadingStep < 5) {
+        setDoneStep(loadingStep);
+        loadingStep++;
+        setActiveStep(loadingStep);
+      }
+    }, 2200);
+  }
+
+  function setActiveStep(idx) {
+    const li = document.getElementById('ls' + idx);
+    if (!li) return;
+    li.querySelector('.step-icon').innerHTML = '<div class="step-dot active"></div>';
+    li.querySelector('.step-text').className = 'step-text active';
+  }
+
+  function setDoneStep(idx) {
+    const li = document.getElementById('ls' + idx);
+    if (!li) return;
+    li.querySelector('.step-icon').innerHTML = '<span class="step-check">✓</span>';
+    li.querySelector('.step-text').className = 'step-text done';
+  }
+
+  function finishLoading() {
+    apiDone = true;
+    clearLoadingInterval();
+    // Mark remaining steps done up to 5, activate 5
+    for (let i = 0; i <= loadingStep; i++) setDoneStep(i);
+    setActiveStep(5);
+    setTimeout(() => {
+      setDoneStep(5);
+      setTimeout(() => {
+        loadingPanel.style.display = 'none';
+      }, 100);
+    }, 600);
+  }
+
+  // ── RUN ANALYSIS ──────────────────────────────────────────
+  async function runAnalysis() {
+    const company = companyInput.value.trim();
+    if (!company) { companyInput.focus(); return; }
+
+    // Reset UI
+    errorPanel.style.display = 'none';
+    resultsPanel.innerHTML = '';
+    runBtn.disabled = true;
+    if (activeChart) { activeChart.destroy(); activeChart = null; }
+
+    startLoading();
+
+    try {
+      const response = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ company, projectionYears })
+      });
+
+      if (!response.ok) {
+        let errText = `API error ${response.status}`;
+        try {
+          const errJson = await response.json();
+          if (errJson.error) errText = errJson.error;
+          else if (errJson.message) errText = errJson.message;
+        } catch (_) {}
+        throw new Error(errText);
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (_) {
+        throw new Error('Could not parse model response. Please try again.');
+      }
+
+      finishLoading();
+
+      setTimeout(() => {
+        try {
+          renderResults(data);
+        } catch (renderErr) {
+          showError('Render error: ' + renderErr.message);
+        }
+        runBtn.disabled = false;
+      }, 700);
+
+    } catch (err) {
+      showError(err.message || 'An unexpected error occurred.');
+    }
+  }
+
+  // Enter key support
+  companyInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') runAnalysis();
+  });
+
+  // ── RENDER RESULTS ────────────────────────────────────────
+  function renderResults(d) {
+    const isPublic = d.is_public;
+    const flagged = new Set((d.key_assumptions_flagged || []).map(s => s.toLowerCase()));
+
+    function isFlag(label) {
+      const l = label.toLowerCase();
+      return [...flagged].some(f => f.includes(l) || l.includes(f));
+    }
+
+    function numCell(val, label, opts = {}) {
+      const cls = opts.key ? 'num key' : 'num';
+      const inferredTag = (isFlag(label) || opts.inferred) ? ' <span style="color:var(--warn)">⊕</span>' : '';
+      return `<td class="${cls}">${val}${inferredTag}</td>`;
+    }
+
+    // ── COMPANY HEADER ──
+    const dqClass = d.data_quality === 'High' ? 'dq-high' : d.data_quality === 'Medium' ? 'dq-med' : 'dq-low';
+    const tickerPill = d.ticker ? `<span class="meta-pill ticker">${d.ticker}</span>` : '';
+    const pubPill = isPublic
+      ? `<span class="meta-pill public">PUBLIC</span>`
+      : `<span class="meta-pill private">PRIVATE</span>`;
+    const sectorPill = d.sector ? `<span class="meta-pill">${d.sector}</span>` : '';
+    const dqPill = `<span class="meta-pill ${dqClass}">${d.data_quality} Data</span>`;
+
+    let rightBlock = '';
+    if (isPublic && d.intrinsic_value_per_share != null) {
+      const upside = d.upside_downside_pct;
+      const upsideClass = upside >= 0 ? 'up' : 'dn';
+      const upsideSign = upside >= 0 ? '+' : '';
+      rightBlock = `
+        <div class="co-right">
+          <div class="iv-label">Intrinsic Value / Share</div>
+          <div class="iv-value">${fmtShare(d.intrinsic_value_per_share)}</div>
+          ${upside != null ? `<div class="iv-upside ${upsideClass}">${upsideSign}${fmtPct(upside)} vs market</div>` : ''}
+          ${d.current_price != null ? `<div class="iv-mktprice">Market: $${d.current_price.toFixed(2)}</div>` : ''}
+        </div>`;
+    } else {
+      // Private or no per-share data
+      rightBlock = `
+        <div class="co-right">
+          <div class="iv-label">Est. Enterprise Value</div>
+          <div class="iv-value">${fmt$(d.enterprise_value_b)}</div>
+          ${d.equity_value_b != null ? `<div class="iv-mktprice">Equity Value: ${fmt$(d.equity_value_b)}</div>` : ''}
+        </div>`;
+    }
+
+    // ── CARD 01: COMPANY PROFILE ──
+    const netDebtLabel = d.net_debt_b >= 0 ? 'Net Debt' : 'Net Cash';
+    const netDebtVal = `$${Math.abs(d.net_debt_b).toFixed(2)}B`;
+
+    const card01 = `
+      <div class="formula-block">
+        <span class="formula-label">FORMULA</span>
+        <div class="formula-text">FCF Margin = Free Cash Flow / Revenue</div>
+        <div class="formula-vars">FCF = Free Cash Flow (operating cash flow minus capex) · Revenue = trailing twelve months</div>
+      </div>
+      <p class="step-prose">This section establishes the company's financial baseline using trailing twelve-month (TTM) figures. Free cash flow margin is the key input to all downstream projections — it tells us how many cents of every dollar in revenue the company converts to free cash.</p>
+      ${(!isPublic || d.data_quality === 'Low') ? `<div class="source-note"><span>⚠ Private company:</span> key inputs are inferred from industry benchmarks and comparable public companies. Treat all figures as estimates.</div>` : ''}
+      <table class="data-table">
+        <thead><tr><th>Metric</th><th class="num">Value</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Revenue (TTM)</td>${numCell(fmt$(d.revenue_ttm_b), 'revenue')}<td class="note">${d.revenue_note || ''}</td></tr>
+          <tr><td>Free Cash Flow (TTM)</td>${numCell(fmt$(d.fcf_ttm_b), 'fcf')}<td class="note">${d.fcf_note || ''}</td></tr>
+          <tr><td>FCF Margin</td>${numCell(fmtPct(d.fcf_margin_pct), 'fcf margin')}<td class="note">FCF / Revenue</td></tr>
+          ${d.market_cap_b != null ? `<tr><td>Market Cap</td>${numCell(fmt$(d.market_cap_b), 'market cap')}<td class="note"></td></tr>` : ''}
+          ${d.shares_outstanding_m != null ? `<tr><td>Shares Outstanding</td><td class="num">${fmtNum(d.shares_outstanding_m, 0)}M</td><td class="note"></td></tr>` : ''}
+          ${d.current_price != null ? `<tr><td>Current Price</td><td class="num">$${d.current_price.toFixed(2)}</td><td class="note">As of analysis date</td></tr>` : ''}
+          <tr><td>${netDebtLabel}</td><td class="num">${netDebtVal}</td><td class="note">${d.net_debt_b >= 0 ? 'Total debt minus cash' : 'Cash exceeds total debt'}</td></tr>
+          <tr><td>Data Quality</td><td class="num" style="color:${d.data_quality==='High'?'var(--green)':d.data_quality==='Medium'?'var(--warn)':'var(--danger)'}">${d.data_quality}</td><td class="note">${d.data_quality_note || ''}</td></tr>
+        </tbody>
+      </table>`;
+
+    // ── CARD 02: WACC ──
+    const wb = d.wacc_breakdown || {};
+    const afterTaxDebt = wb.cost_of_debt_pct != null && wb.tax_rate_pct != null
+      ? wb.cost_of_debt_pct * (1 - wb.tax_rate_pct / 100)
+      : null;
+
+    const card02 = `
+      <div class="formula-block">
+        <span class="formula-label">FORMULA</span>
+        <div class="formula-text">WACC = (E/V) × Ke + (D/V) × Kd × (1 − t)<br>Ke = Rf + β × ERP</div>
+        <div class="formula-vars">E = market value of equity · D = market value of debt · V = E + D<br>Ke = cost of equity · Kd = pre-tax cost of debt · t = tax rate<br>Rf = risk-free rate · β = beta · ERP = equity risk premium</div>
+      </div>
+      <p class="step-prose">The Weighted Average Cost of Capital (WACC) is the rate used to discount future cash flows. It blends the cost of equity (via CAPM) with the after-tax cost of debt, weighted by capital structure. A higher WACC means a lower present value for the same future cash flows.</p>
+      <table class="data-table">
+        <thead><tr><th>Component</th><th class="num">Value</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Risk-Free Rate (Rf)</td>${numCell(fmtPct(wb.risk_free_rate_pct), 'risk-free')}<td class="note">10yr US Treasury yield</td></tr>
+          <tr><td>Equity Risk Premium (ERP)</td>${numCell(fmtPct(wb.equity_risk_premium_pct), 'equity risk premium')}<td class="note">Damodaran market ERP</td></tr>
+          <tr><td>Beta (β)</td>${numCell(fmtNum(wb.beta, 2), 'beta')}<td class="note">Levered beta vs market</td></tr>
+          <tr><td>Cost of Equity (Ke)</td>${numCell(fmtPct(wb.cost_of_equity_pct), 'cost of equity')}<td class="note">Rf + β × ERP</td></tr>
+          <tr><td>Pre-tax Cost of Debt (Kd)</td>${numCell(fmtPct(wb.cost_of_debt_pct), 'cost of debt')}<td class="note">Weighted avg interest rate</td></tr>
+          <tr><td>After-tax Cost of Debt</td><td class="num">${afterTaxDebt != null ? fmtPct(afterTaxDebt) : '—'}</td><td class="note">Kd × (1 − t)</td></tr>
+          <tr><td>Tax Rate</td>${numCell(fmtPct(wb.tax_rate_pct), 'tax rate')}<td class="note">Effective corporate rate</td></tr>
+          <tr><td>Equity Weight (E/V)</td>${numCell(fmtPct(wb.equity_weight_pct), 'equity weight')}<td class="note">% of capital from equity</td></tr>
+          <tr><td>Debt Weight (D/V)</td>${numCell(fmtPct(wb.debt_weight_pct), 'debt weight')}<td class="note">% of capital from debt</td></tr>
+          <tr class="key-row"><td><strong>WACC</strong></td><td class="num" style="color:var(--accent2);font-weight:600">${fmtPct(d.wacc_pct)}</td><td class="note">Blended discount rate</td></tr>
+        </tbody>
+      </table>`;
+
+    // ── CARD 03: FCF PROJECTIONS ──
+    const projRows = (d.projections || []).map((p, i) => `
+      <tr>
+        <td>Year ${p.year}</td>
+        <td class="num">${fmtPct(p.revenue_growth_pct)}</td>
+        <td class="num">${fmtPct(p.fcf_margin_pct)}</td>
+        <td class="num">${fmt$(p.fcf_b)}</td>
+        <td class="num">${fmtNum(p.discount_factor, 4)}</td>
+        <td class="num">${fmt$(p.pv_fcf_b)}</td>
+      </tr>`).join('');
+
+    const fcfVals = (d.projections || []).map(p => p.fcf_b);
+    const pvVals = (d.projections || []).map(p => p.pv_fcf_b);
+    const xLabels = (d.projections || []).map((_, i) => 'Y' + (i + 1));
+
+    const card03 = `
+      <div class="formula-block">
+        <span class="formula-label">FORMULA</span>
+        <div class="formula-text">PV of FCFₙ = FCFₙ / (1 + WACC)ⁿ</div>
+        <div class="formula-vars">FCFₙ = free cash flow in year n · n = year number · WACC = discount rate</div>
+      </div>
+      <p class="step-prose">Each year's projected free cash flow is discounted back to today's value using WACC. The sum of all discounted FCFs represents the present value of the company's near-term cash generation. Growth rates typically taper from higher near-term rates toward the terminal growth rate.</p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Year</th>
+            <th class="num">Rev Growth</th>
+            <th class="num">FCF Margin</th>
+            <th class="num">FCF ($B)</th>
+            <th class="num">Discount Factor</th>
+            <th class="num">PV of FCF ($B)</th>
+          </tr>
+        </thead>
+        <tbody>${projRows}</tbody>
+      </table>
+      <div class="chart-legend">
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:rgba(0,153,255,0.6)"></div>
+          FCF ($B)
+        </div>
+        <div class="legend-item">
+          <div class="legend-swatch" style="background:rgba(0,212,170,0.6)"></div>
+          PV of FCF ($B)
+        </div>
+      </div>
+      <div class="chart-wrapper"><canvas id="fcfChart"></canvas></div>`;
+
+    // ── CARD 04: TERMINAL VALUE ──
+    const tvPct = d.enterprise_value_b > 0 ? (d.pv_terminal_value_b / d.enterprise_value_b * 100) : null;
+    const tvFlagHtml = tvPct != null && (tvPct > 90 || tvPct < 40)
+      ? `<div class="tv-flag warn">⚠ Terminal value represents ${tvPct.toFixed(1)}% of enterprise value — ${tvPct > 90 ? 'unusually high; results are highly sensitive to terminal growth and discount rate assumptions' : 'unusually low; near-term FCFs are driving most of the valuation'}.</div>`
+      : '';
+
+    const card04 = `
+      <div class="formula-block">
+        <span class="formula-label">FORMULA</span>
+        <div class="formula-text">TV = FCFₙ × (1 + g) / (WACC − g)<br>PV of TV = TV / (1 + WACC)ⁿ</div>
+        <div class="formula-vars">FCFₙ = final projection year FCF · g = terminal growth rate · n = projection horizon (${projectionYears}) · WACC = discount rate</div>
+      </div>
+      <p class="step-prose">The terminal value captures all cash flows beyond the explicit projection period, assuming the company grows at a stable perpetual rate. It is then discounted to the present using the same WACC. Terminal value typically represents the majority of total enterprise value in DCF models.</p>
+      <table class="data-table">
+        <thead><tr><th>Metric</th><th class="num">Value</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Final Year FCF (Y${projectionYears})</td><td class="num">${fmt$((d.projections || []).slice(-1)[0]?.fcf_b)}</td><td class="note">Last projection year</td></tr>
+          <tr><td>Terminal Growth Rate (g)</td><td class="num">${fmtPct(d.terminal_growth_rate_pct)}</td><td class="note">Perpetuity growth; typically GDP-linked</td></tr>
+          <tr><td>WACC</td><td class="num">${fmtPct(d.wacc_pct)}</td><td class="note">Discount rate</td></tr>
+          <tr><td>Terminal Value (TV)</td><td class="num">${fmt$(d.terminal_value_b)}</td><td class="note">Gordon Growth Model</td></tr>
+          <tr class="key-row"><td>PV of Terminal Value</td><td class="num">${fmt$(d.pv_terminal_value_b)}</td><td class="note">Discounted over ${projectionYears} years</td></tr>
+          <tr><td>TV as % of Enterprise Value</td><td class="num" style="${tvPct != null && (tvPct > 90 || tvPct < 40) ? 'color:var(--warn)' : ''}">${tvPct != null ? tvPct.toFixed(1) + '%' : '—'}</td><td class="note">Healthy range: 60–80%</td></tr>
+        </tbody>
+      </table>
+      ${tvFlagHtml}`;
+
+    // ── CARD 05: VALUATION BRIDGE ──
+    const netDebtBridgeLabel = d.net_debt_b >= 0 ? '− Net Debt' : '+ Net Cash';
+    const netDebtBridgeVal = `$${Math.abs(d.net_debt_b).toFixed(2)}B`;
+
+    const perShareRow = (isPublic && d.intrinsic_value_per_share != null && d.shares_outstanding_m != null) ? `
+          <tr><td>÷ Shares Outstanding</td><td class="num">${fmtNum(d.shares_outstanding_m, 0)}M</td><td class="note"></td></tr>
+          <tr class="key-row"><td><strong>Intrinsic Value / Share</strong></td><td class="num" style="color:var(--accent2);font-size:14px">${fmtShare(d.intrinsic_value_per_share)}</td><td class="note">Base case</td></tr>` : '';
+
+    const card05 = `
+      <div class="formula-block">
+        <span class="formula-label">FORMULA</span>
+        <div class="formula-text">EV = Σ PV(FCFs) + PV(Terminal Value)<br>Equity Value = EV − Net Debt<br>Intrinsic Value/Share = Equity Value / Shares Outstanding</div>
+        <div class="formula-vars">EV = enterprise value · Net Debt = total debt minus cash (positive = net debt, negative = net cash)</div>
+      </div>
+      <p class="step-prose">The valuation bridge converts enterprise value to an equity value per share by adding together the discounted cash flows, then adjusting for net debt to arrive at what belongs to equity holders. Dividing by shares outstanding gives an intrinsic value per share to compare against the market price.</p>
+      <table class="data-table">
+        <thead><tr><th>Bridge Item</th><th class="num">Value</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Sum of PV of FCFs</td><td class="num">${fmt$(d.sum_pv_fcf_b)}</td><td class="note">Years 1–${projectionYears} discounted</td></tr>
+          <tr><td>+ PV of Terminal Value</td><td class="num">${fmt$(d.pv_terminal_value_b)}</td><td class="note">Perpetuity value</td></tr>
+          <tr class="key-row"><td><strong>= Enterprise Value</strong></td><td class="num">${fmt$(d.enterprise_value_b)}</td><td class="note"></td></tr>
+          <tr><td>${netDebtBridgeLabel} / + Cash</td><td class="num">${d.net_debt_b >= 0 ? '−' : '+'}${netDebtBridgeVal}</td><td class="note">${d.net_debt_b >= 0 ? 'Debt reduces equity value' : 'Cash adds to equity value'}</td></tr>
+          <tr class="key-row"><td><strong>= Equity Value</strong></td><td class="num">${fmt$(d.equity_value_b)}</td><td class="note"></td></tr>
+          ${perShareRow}
+        </tbody>
+      </table>`;
+
+    // ── CARD 06: SENSITIVITY ──
+    const sens = d.sensitivity || {};
+    function sensVal(s) {
+      if (!s) return '—';
+      if (isPublic && s.value != null) return `$${s.value.toFixed(2)}`;
+      return s.value != null ? `$${s.value.toFixed(2)}B` : '—';
+    }
+
+    const flaggedItems = (d.key_assumptions_flagged || []);
+    const flaggedHtml = flaggedItems.length > 0 ? `
+      <div class="flagged-section">
+        <div class="flagged-title">Flagged Assumptions</div>
+        ${flaggedItems.map(item => `<div class="flagged-item">⊕ ${item}</div>`).join('')}
+      </div>` : '';
+
+    const card06 = `
+      <div class="formula-block">
+        <span class="formula-label">FORMULA</span>
+        <div class="formula-text">Upside/Downside = (Intrinsic Value − Market Price) / Market Price × 100</div>
+        <div class="formula-vars">Intrinsic Value = per share (public) or enterprise value (private) · Market Price = current quoted price</div>
+      </div>
+      <p class="step-prose">Sensitivity analysis stress-tests the valuation across different WACC and terminal growth rate assumptions. The bull case uses a lower discount rate and higher perpetuity growth; the bear case uses a higher discount rate and lower growth. This illustrates the range of plausible outcomes.</p>
+      <div class="sens-grid">
+        <div class="sens-card">
+          <div class="sens-label bull">BULL</div>
+          <div class="sens-value bull">${sensVal(sens.bull)}</div>
+          <div class="sens-meta">WACC ${sens.bull ? fmtPct(sens.bull.wacc_pct) : '—'} · TGR ${sens.bull ? fmtPct(sens.bull.tgr_pct) : '—'}</div>
+        </div>
+        <div class="sens-card">
+          <div class="sens-label base">BASE</div>
+          <div class="sens-value base">${sensVal(sens.base)}</div>
+          <div class="sens-meta">WACC ${sens.base ? fmtPct(sens.base.wacc_pct) : '—'} · TGR ${sens.base ? fmtPct(sens.base.tgr_pct) : '—'}</div>
+        </div>
+        <div class="sens-card">
+          <div class="sens-label bear">BEAR</div>
+          <div class="sens-value bear">${sensVal(sens.bear)}</div>
+          <div class="sens-meta">WACC ${sens.bear ? fmtPct(sens.bear.wacc_pct) : '—'} · TGR ${sens.bear ? fmtPct(sens.bear.tgr_pct) : '—'}</div>
+        </div>
+      </div>
+      ${flaggedHtml}`;
+
+    // ── CARD 07: RISKS & NOTE ──
+    const risksHtml = (d.key_risks || []).map(r => `<li>${r}</li>`).join('');
+
+    const card07 = `
+      <p class="step-prose">The following risks could cause actual outcomes to materially differ from this model's base case. These are not exhaustive — they represent the most significant factors that could impair or enhance the company's intrinsic value.</p>
+      <ul class="risks-list">${risksHtml}</ul>
+      ${d.analyst_note ? `<div class="analyst-note">${d.analyst_note}</div>` : ''}`;
+
+    // ── ASSEMBLE ALL CARDS ──
+    function makeCard(num, title, content) {
+      const id = `card-${num}`;
+      return `
+        <div class="step-card">
+          <div class="step-header" onclick="toggleCard('${id}')">
+            <div class="step-header-left">
+              <span class="step-num">${num}</span>
+              <span class="step-title">${title}</span>
+            </div>
+            <span class="step-chevron open" id="chev-${id}">▾</span>
+          </div>
+          <div class="step-body" id="${id}">
+            ${content}
+          </div>
+        </div>`;
+    }
+
+    resultsPanel.innerHTML = `
+      <div class="company-header">
+        <div class="co-left">
+          <div class="co-name">${d.company}</div>
+          <div class="co-meta">
+            ${tickerPill}
+            ${pubPill}
+            ${sectorPill}
+            ${dqPill}
+          </div>
+        </div>
+        ${rightBlock}
+      </div>
+
+      ${makeCard('01', 'Company &amp; Financial Profile', card01)}
+      ${makeCard('02', 'Discount Rate (WACC)', card02)}
+      ${makeCard('03', `Free Cash Flow Projections (${projectionYears} Years)`, card03)}
+      ${makeCard('04', 'Terminal Value', card04)}
+      ${makeCard('05', 'Valuation Bridge &amp; Intrinsic Value', card05)}
+      ${makeCard('06', 'Sensitivity Analysis', card06)}
+      ${makeCard('07', 'Key Risks &amp; Investment Note', card07)}
+
+      <div class="disclaimer-bar">
+        <strong>Not financial advice.</strong> This analysis is AI-generated and provided for educational and informational purposes only. It does not constitute a buy, sell, or hold recommendation for any security. All figures are estimates based on publicly available information and modeled assumptions — they may be incomplete, inaccurate, or outdated. Do not make investment decisions based on this output alone. Consult a licensed financial professional before making any investment decisions.
+      </div>
+    `;
+
+    // ── BUILD CHART ──
+    if (activeChart) { activeChart.destroy(); activeChart = null; }
+    const canvas = document.getElementById('fcfChart');
+    if (canvas) {
+      activeChart = new Chart(canvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: xLabels,
+          datasets: [
+            {
+              label: 'FCF ($B)',
+              data: fcfVals,
+              backgroundColor: 'rgba(0,153,255,0.5)',
+              borderColor: '#0099ff',
+              borderWidth: 1.5,
+              borderRadius: 3,
+            },
+            {
+              label: 'PV of FCF ($B)',
+              data: pvVals,
+              backgroundColor: 'rgba(0,212,170,0.5)',
+              borderColor: '#00d4aa',
+              borderWidth: 1.5,
+              borderRadius: 3,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1a2235',
+              borderColor: 'rgba(255,255,255,0.1)',
+              borderWidth: 1,
+              titleColor: '#8a9ab5',
+              bodyColor: '#e8edf5',
+              titleFont: { family: "'IBM Plex Mono', monospace", size: 10 },
+              bodyFont: { family: "'IBM Plex Mono', monospace", size: 11 },
+              callbacks: {
+                label: ctx => ` ${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}B`
+              }
+            }
+          },
+          scales: {
+            x: {
+              ticks: {
+                color: '#4a5568',
+                font: { family: "'IBM Plex Mono', monospace", size: 10 }
+              },
+              grid: { color: 'rgba(255,255,255,0.04)' },
+              border: { color: 'rgba(255,255,255,0.08)' }
+            },
+            y: {
+              ticks: {
+                color: '#4a5568',
+                font: { family: "'IBM Plex Mono', monospace", size: 10 },
+                callback: v => '$' + v.toFixed(0) + 'B'
+              },
+              grid: { color: 'rgba(255,255,255,0.06)' },
+              border: { color: 'rgba(255,255,255,0.08)' }
+            }
+          }
+        }
+      });
+    }
+
+    // Scroll to results
+    resultsPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // ── TOGGLE CARD ───────────────────────────────────────────
+  function toggleCard(id) {
+    const body = document.getElementById(id);
+    const chev = document.getElementById('chev-' + id);
+    if (!body) return;
+    const isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    if (chev) chev.classList.toggle('open', !isOpen);
+  }
+</script>
+</body>
+</html>
