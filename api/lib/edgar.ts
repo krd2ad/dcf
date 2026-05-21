@@ -31,13 +31,23 @@ interface CompanyFacts {
   };
 }
 
+const EIGHTEEN_MONTHS_AGO = new Date(Date.now() - 18 * 30.44 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .slice(0, 10);
+
 const TWO_YEARS_AGO = new Date(Date.now() - 2 * 365.25 * 24 * 60 * 60 * 1000)
   .toISOString()
   .slice(0, 10);
 
 /**
- * Returns the most recent 10-K/10-Q value for a concept, or null if not found
- * or if the most recent entry is older than 2 years (stale data).
+ * Returns the most recent value for a concept, strongly preferring 10-K
+ * (full-year) over 10-Q (partial-year / YTD) to avoid grabbing cumulative
+ * quarterly figures as if they were annual totals.
+ *
+ * Strategy:
+ *   1. Most recent 10-K within 18 months  ← primary
+ *   2. Most recent 10-Q within 2 years    ← fallback (e.g. for balance-sheet
+ *      point-in-time figures that are fine from a recent quarter)
  */
 function getLatestAnnual(
   facts: CompanyFacts,
@@ -49,14 +59,24 @@ function getLatestAnnual(
   const entries = ns?.[concept]?.units?.[unit];
   if (!Array.isArray(entries) || entries.length === 0) return null;
 
-  const filtered = entries.filter((e) => e.form === '10-K' || e.form === '10-Q');
-  if (filtered.length === 0) return null;
+  const byForm = (form: string) =>
+    entries
+      .filter((e) => e.form === form)
+      .sort((a, b) => (a.end > b.end ? -1 : a.end < b.end ? 1 : 0));
 
-  filtered.sort((a, b) => (a.end > b.end ? -1 : a.end < b.end ? 1 : 0));
+  // 1. Prefer most recent 10-K within 18 months
+  const annuals = byForm('10-K');
+  if (annuals.length > 0 && annuals[0].end >= EIGHTEEN_MONTHS_AGO) {
+    return annuals[0].val;
+  }
 
-  if (filtered[0].end < TWO_YEARS_AGO) return null;
+  // 2. Fall back to most recent 10-Q within 2 years
+  const quarterlies = byForm('10-Q');
+  if (quarterlies.length > 0 && quarterlies[0].end >= TWO_YEARS_AGO) {
+    return quarterlies[0].val;
+  }
 
-  return filtered[0].val;
+  return null;
 }
 
 /**
