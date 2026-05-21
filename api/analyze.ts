@@ -116,7 +116,8 @@ function buildFinancialsContext(snap: FinancialSnapshot): string {
     `- Shares Outstanding: ${snap.shares_outstanding_m.toFixed(0)}M`,
   ]
   if (snap.beta !== null) lines.push(`- Beta: ${snap.beta.toFixed(2)}`)
-  if (snap.market_cap_b !== null) lines.push(`- Market Cap: $${snap.market_cap_b.toFixed(2)}B`)
+  // Intentionally omit market_cap_b — it is always stale from the API snapshot.
+  // Market cap is recalculated server-side from live price × shares after the Alpaca call.
   return lines.join('\n')
 }
 
@@ -196,7 +197,7 @@ export default async function handler(req: any, res: any) {
 
     const parsed = JSON.parse(cleaned)
 
-    // Override current_price with live Alpaca price
+    // Override current_price with live Alpaca price, then recalculate derived fields
     if (parsed.is_public && parsed.ticker && process.env.ALPACA_API_KEY && process.env.ALPACA_SECRET_KEY) {
       try {
         const alpacaRes = await fetch(
@@ -211,16 +212,40 @@ export default async function handler(req: any, res: any) {
         if (alpacaRes.ok) {
           const alpacaData = await alpacaRes.json() as any
           const livePrice = alpacaData?.trade?.p
+          const priceTimestamp: string | undefined = alpacaData?.trade?.t
+
           if (typeof livePrice === 'number' && livePrice > 0) {
             parsed.current_price = livePrice
+            if (priceTimestamp) parsed.price_timestamp = priceTimestamp
+
+            // Recalculate upside/downside against live price
             if (typeof parsed.intrinsic_value_per_share === 'number') {
               parsed.upside_downside_pct =
                 ((parsed.intrinsic_value_per_share - livePrice) / livePrice) * 100
             }
+
+            // Recalculate market cap from live price × shares outstanding.
+            // shares_outstanding_m is in millions, so divide by 1000 to get billions.
+            const sharesM: unknown = parsed.shares_outstanding_m
+            if (typeof sharesM === 'number' && sharesM > 0) {
+              const calculatedMarketCapB = (livePrice * sharesM) / 1000
+              const apiMarketCapB: unknown = parsed.market_cap_b
+              const divergence =
+                typeof apiMarketCapB === 'number' && apiMarketCapB > 0
+                  ? Math.abs(apiMarketCapB - calculatedMarketCapB) / calculatedMarketCapB
+                  : 1
+
+              parsed.market_cap_b = calculatedMarketCapB
+              parsed.market_cap_source = 'calculated'
+              if (divergence > 0.05 && typeof apiMarketCapB === 'number') {
+                parsed.market_cap_api_stale = true
+                parsed.market_cap_api_b = apiMarketCapB
+              }
+            }
           }
         }
       } catch {
-        // Non-fatal
+        // Non-fatal — return whatever Claude + pre-fetch provided
       }
     }
 

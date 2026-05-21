@@ -774,7 +774,9 @@
 
   function fmt$(n, dec = 2) {
     if (n == null || isNaN(n)) return '—';
-    return '$' + Math.abs(n).toFixed(dec) + 'B';
+    const abs = Math.abs(n);
+    if (abs >= 1000) return '$' + (abs / 1000).toFixed(dec) + 'T';
+    return '$' + abs.toFixed(dec) + 'B';
   }
 
   function fmtPct(n, dec = 1) {
@@ -992,9 +994,9 @@
           <tr><td>Revenue (TTM)</td>${numCell(fmt$(d.revenue_ttm_b), 'revenue')}<td class="note">${d.revenue_note || ''}</td></tr>
           <tr><td>Free Cash Flow (TTM)</td>${numCell(fmt$(d.fcf_ttm_b), 'fcf')}<td class="note">${d.fcf_note || ''}</td></tr>
           <tr><td>FCF Margin</td>${numCell(fmtPct(d.fcf_margin_pct), 'fcf margin')}<td class="note">FCF / Revenue</td></tr>
-          ${d.market_cap_b != null ? `<tr><td>Market Cap</td>${numCell(fmt$(d.market_cap_b), 'market cap')}<td class="note"></td></tr>` : ''}
+          ${d.market_cap_b != null ? `<tr><td>Market Cap</td>${numCell(fmt$(d.market_cap_b), 'market cap')}<td class="note">${d.market_cap_source === 'calculated' ? 'Live price × shares' : 'API snapshot'}${d.market_cap_api_stale ? ` <span style="color:var(--warn)" title="API value $${d.market_cap_api_b != null ? (d.market_cap_api_b/1000).toFixed(2)+'T' : '?'} diverged >5% from calculated">⚠ stale API</span>` : ''}</td></tr>` : ''}
           ${d.shares_outstanding_m != null ? `<tr><td>Shares Outstanding</td><td class="num">${fmtNum(d.shares_outstanding_m, 0)}M</td><td class="note"></td></tr>` : ''}
-          ${d.current_price != null ? `<tr><td>Current Price</td><td class="num">$${d.current_price.toFixed(2)}</td><td class="note">As of analysis date</td></tr>` : ''}
+          ${d.current_price != null ? `<tr><td>Current Price</td><td class="num">$${d.current_price.toFixed(2)}</td><td class="note">Live · Alpaca${d.price_timestamp ? ' · ' + new Date(d.price_timestamp).toLocaleTimeString() : ''}</td></tr>` : ''}
           <tr><td>${netDebtLabel}</td><td class="num">${netDebtVal}</td><td class="note">${d.net_debt_b >= 0 ? 'Total debt minus cash' : 'Cash exceeds total debt'}</td></tr>
           <tr><td>Data Quality</td><td class="num" style="color:${d.data_quality==='High'?'var(--green)':d.data_quality==='Medium'?'var(--warn)':'var(--danger)'}">${d.data_quality}</td><td class="note">${d.data_quality_note || ''}</td></tr>
         </tbody>
