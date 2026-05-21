@@ -1,8 +1,18 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { fetchYahooFinancials } from './lib/yahoo.js'
+import { fetchEdgarFinancials } from './lib/edgar.js'
+import type { FinancialSnapshot as YahooSnapshot } from './lib/yahoo.js'
+import type { FinancialSnapshot as EdgarSnapshot } from './lib/edgar.js'
+
+type FinancialSnapshot = YahooSnapshot | EdgarSnapshot
 
 const SYSTEM_PROMPT = `You are a financial modeling assistant that performs Discounted Cash Flow analysis.
 
-Return a single valid JSON object with NO markdown fences, NO preamble, and NO trailing text. Use real publicly known financial data for public companies (revenue, FCF, balance sheet metrics, consensus growth estimates, beta, capital structure). For private companies: infer from industry benchmarks, comparable public companies, and analyst estimates. Flag all inferred fields in key_assumptions_flagged.
+Return a single valid JSON object with NO markdown fences, NO preamble, and NO trailing text.
+
+When verified financial figures are provided in the user message, you MUST use them exactly as given for revenue_ttm_b, fcf_ttm_b, net_debt_b, shares_outstanding_m, and beta (if provided). Do not override these with your own estimates. Only infer fields that are not provided.
+
+For private companies or when no verified data is available: infer all inputs from industry benchmarks and comparable public companies. Flag all inferred fields in key_assumptions_flagged.
 
 Return exactly the number of projection years requested (5 or 10). For 10-year runs, use higher near-term growth tapering to lower growth in years 6–10.
 
@@ -68,6 +78,48 @@ Return this exact JSON schema:
   "analyst_note": "string"
 }`
 
+async function resolveTicker(company: string): Promise<string | null> {
+  try {
+    const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(company)}&quotesCount=1&newsCount=0`
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; DCF-Analyzer/1.0)', 'Accept': 'application/json' },
+    })
+    if (!res.ok) return null
+    const data = await res.json() as any
+    const symbol = data?.quotes?.[0]?.symbol
+    return typeof symbol === 'string' ? symbol : null
+  } catch {
+    return null
+  }
+}
+
+async function fetchFinancials(company: string): Promise<FinancialSnapshot | null> {
+  // Resolve ticker — try the input directly first, then Yahoo search
+  const tickerGuess = /^[A-Z]{1,5}$/.test(company.trim()) ? company.trim() : null
+  const ticker = tickerGuess ?? await resolveTicker(company)
+  if (!ticker) return null
+
+  // Yahoo Finance first, EDGAR as fallback
+  const yahoo = await fetchYahooFinancials(ticker)
+  if (yahoo) return yahoo
+
+  const edgar = await fetchEdgarFinancials(ticker)
+  return edgar
+}
+
+function buildFinancialsContext(snap: FinancialSnapshot): string {
+  const lines = [
+    `VERIFIED FINANCIAL DATA (source: ${snap.source.toUpperCase()} — use these exact figures):`,
+    `- Revenue (TTM): $${snap.revenue_ttm_b.toFixed(2)}B`,
+    `- Free Cash Flow (TTM): $${snap.fcf_ttm_b.toFixed(2)}B`,
+    `- Net Debt: $${snap.net_debt_b.toFixed(2)}B (positive = net debt, negative = net cash)`,
+    `- Shares Outstanding: ${snap.shares_outstanding_m.toFixed(0)}M`,
+  ]
+  if (snap.beta !== null) lines.push(`- Beta: ${snap.beta.toFixed(2)}`)
+  if (snap.market_cap_b !== null) lines.push(`- Market Cap: $${snap.market_cap_b.toFixed(2)}B`)
+  return lines.join('\n')
+}
+
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false
   if (origin === 'https://krd2ad.github.io') return true
@@ -78,11 +130,9 @@ function isAllowedOrigin(origin: string | undefined): boolean {
 
 function setCorsHeaders(req: any, res: any) {
   const origin = req.headers.origin
-
   if (isAllowedOrigin(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin)
   }
-
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-site-password')
 }
@@ -100,7 +150,6 @@ export default async function handler(req: any, res: any) {
 
   try {
     const sitePassword = process.env.SITE_PASSWORD
-
     if (sitePassword && req.headers['x-site-password'] !== sitePassword) {
       return res.status(401).json({ error: 'Unauthorized' })
     }
@@ -119,29 +168,27 @@ export default async function handler(req: any, res: any) {
       return res.status(500).json({ error: 'Missing Anthropic API key' })
     }
 
-    const client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    })
+    // Fetch real financials before calling Claude (non-fatal if unavailable)
+    const financials = await fetchFinancials(company)
+
+    const userMessage = financials
+      ? `${buildFinancialsContext(financials)}\n\nConduct a full ${projectionYears}-year DCF analysis for: ${company}`
+      : `Conduct a full ${projectionYears}-year DCF analysis for: ${company}`
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 4000,
       system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `Conduct a full ${projectionYears}-year DCF analysis for: ${company}`,
-        },
-      ],
+      messages: [{ role: 'user', content: userMessage }],
     })
 
     const textBlock = response.content.find((b: any) => b.type === 'text')
-
     if (!textBlock || textBlock.type !== 'text') {
       return res.status(500).json({ error: 'Unexpected response from AI' })
     }
 
-    // Strip any accidental markdown fences
     const cleaned = textBlock.text
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```\s*$/, '')
@@ -149,7 +196,7 @@ export default async function handler(req: any, res: any) {
 
     const parsed = JSON.parse(cleaned)
 
-    // Override current_price with live data from Alpaca for public companies
+    // Override current_price with live Alpaca price
     if (parsed.is_public && parsed.ticker && process.env.ALPACA_API_KEY && process.env.ALPACA_SECRET_KEY) {
       try {
         const alpacaRes = await fetch(
@@ -162,7 +209,7 @@ export default async function handler(req: any, res: any) {
           },
         )
         if (alpacaRes.ok) {
-          const alpacaData = await alpacaRes.json()
+          const alpacaData = await alpacaRes.json() as any
           const livePrice = alpacaData?.trade?.p
           if (typeof livePrice === 'number' && livePrice > 0) {
             parsed.current_price = livePrice
@@ -173,7 +220,7 @@ export default async function handler(req: any, res: any) {
           }
         }
       } catch {
-        // Non-fatal: fall back to model-provided price
+        // Non-fatal
       }
     }
 
