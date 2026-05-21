@@ -22,39 +22,54 @@ interface FilingEntry {
   fy?: number;
 }
 
-type UsgaapFacts = Record<string, { units?: { USD?: FilingEntry[] } }>;
+type NamespaceFacts = Record<string, { units?: { USD?: FilingEntry[]; shares?: FilingEntry[] } }>;
 
 interface CompanyFacts {
   facts: {
-    'us-gaap'?: UsgaapFacts;
+    'us-gaap'?: NamespaceFacts;
+    'dei'?: NamespaceFacts;
   };
 }
 
+const TWO_YEARS_AGO = new Date(Date.now() - 2 * 365.25 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .slice(0, 10);
+
 /**
- * Returns the most recent annual (10-K or 10-Q) filing value for a given
- * XBRL concept, or null if no matching entry exists.
+ * Returns the most recent 10-K/10-Q value for a concept, or null if not found
+ * or if the most recent entry is older than 2 years (stale data).
  */
-function getLatestAnnual(facts: CompanyFacts, concept: string): number | null {
-  const entries = facts.facts['us-gaap']?.[concept]?.units?.USD;
+function getLatestAnnual(
+  facts: CompanyFacts,
+  concept: string,
+  namespace: 'us-gaap' | 'dei' = 'us-gaap',
+  unit: 'USD' | 'shares' = 'USD',
+): number | null {
+  const ns = facts.facts[namespace];
+  const entries = ns?.[concept]?.units?.[unit];
   if (!Array.isArray(entries) || entries.length === 0) return null;
 
-  const filtered = entries.filter(
-    (e) => e.form === '10-K' || e.form === '10-Q'
-  );
+  const filtered = entries.filter((e) => e.form === '10-K' || e.form === '10-Q');
   if (filtered.length === 0) return null;
 
-  // Sort descending by end date (ISO string comparison is safe here)
   filtered.sort((a, b) => (a.end > b.end ? -1 : a.end < b.end ? 1 : 0));
+
+  if (filtered[0].end < TWO_YEARS_AGO) return null;
 
   return filtered[0].val;
 }
 
 /**
- * Tries each concept name in order; returns the first non-null value found.
+ * Tries each concept in order; returns the first non-null recent value.
  */
-function getFirstNonNull(facts: CompanyFacts, concepts: string[]): number | null {
+function getFirstNonNull(
+  facts: CompanyFacts,
+  concepts: string[],
+  namespace: 'us-gaap' | 'dei' = 'us-gaap',
+  unit: 'USD' | 'shares' = 'USD',
+): number | null {
   for (const concept of concepts) {
-    const val = getLatestAnnual(facts, concept);
+    const val = getLatestAnnual(facts, concept, namespace, unit);
     if (val !== null) return val;
   }
   return null;
@@ -132,10 +147,11 @@ export async function fetchEdgarFinancials(ticker: string): Promise<FinancialSna
       'DebtCurrent',
     ]) ?? 0;
 
-    // Shares outstanding
-    const sharesRaw = getFirstNonNull(facts, [
-      'CommonStockSharesOutstanding',
-    ]);
+    // Shares outstanding — try us-gaap USD, then us-gaap shares unit, then dei shares unit
+    const sharesRaw =
+      getFirstNonNull(facts, ['CommonStockSharesOutstanding'], 'us-gaap', 'USD') ??
+      getFirstNonNull(facts, ['CommonStockSharesOutstanding'], 'us-gaap', 'shares') ??
+      getFirstNonNull(facts, ['EntityCommonStockSharesOutstanding'], 'dei', 'shares');
     if (sharesRaw === null) return null;
 
     // Derived values
